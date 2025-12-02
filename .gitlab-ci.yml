@@ -1,0 +1,157 @@
+# ==========================================================
+# Helpstrr CI/CD Pipeline (v2025.11-enterprise)
+# Author: 2COMS DevOps
+# Purpose:
+#   - Deploy Laravel app to EC2 (Dev → UAT → Prod)
+#   - Manual rollback support per environment
+# ==========================================================
+
+stages:
+  - deploy
+  - rollback
+
+# -------------------------------------------------------------------
+# GLOBAL VARIABLES
+# -------------------------------------------------------------------
+variables:
+  DEPLOY_USER: ubuntu
+  DEPLOY_SCRIPT: /etc/deploy/deploy.sh
+  ROLLBACK_SCRIPT: /etc/deploy/rollback.sh
+  GIT_STRATEGY: fetch
+  GIT_DEPTH: 1
+  FF_USE_NEW_BASH_EVAL_STRATEGY: "true"
+
+# -------------------------------------------------------------------
+# SSH SETUP (reusable)
+# -------------------------------------------------------------------
+.ssh_setup: &ssh_setup
+  - eval $(ssh-agent -s)
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+  - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  - ssh -T ${DEPLOY_USER}@${DEPLOY_HOST} "echo '✅ SSH connection successful to ${DEPLOY_HOST}'"
+
+# -------------------------------------------------------------------
+# DEPLOY JOBS
+# -------------------------------------------------------------------
+
+# ---------- DEV (auto on push to develop) ----------
+deploy_dev:
+  stage: deploy
+  environment: development
+  only:
+    - develop
+  variables:
+    DEPLOY_HOST: 172.31.12.203
+    DEPLOY_APP: helpstrr-dev
+    SSH_PRIVATE_KEY: $SSH_PRIVATE_KEY_DEV
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "🚀 Deploying ${DEPLOY_APP} to DEV (${DEPLOY_HOST})..."
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "BRANCH=${CI_COMMIT_REF_NAME} sudo -E APP_ID=${DEPLOY_APP} bash ${DEPLOY_SCRIPT}"
+  tags:
+    - 2c-dev-team-instance-runner-1
+  allow_failure: false
+
+# ---------- UAT (manual trigger) ----------
+deploy_uat:
+  stage: deploy
+  environment: uat
+  only:
+    - uat
+  when: manual
+  needs:
+    - job: deploy_dev
+      optional: true
+  variables:
+    DEPLOY_HOST: 172.31.8.223
+    DEPLOY_APP: helpstrr-uat
+    SSH_PRIVATE_KEY: $SSH_PRIVATE_KEY_UAT
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "🚀 Deploying ${DEPLOY_APP} to UAT (${DEPLOY_HOST})..."
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "BRANCH=${CI_COMMIT_REF_NAME} sudo -E APP_ID=${DEPLOY_APP} bash ${DEPLOY_SCRIPT}"
+  tags:
+    - 2c-dev-team-instance-runner-1
+  allow_failure: false
+
+# ---------- PROD (manual trigger) ----------
+deploy_prod:
+  stage: deploy
+  environment: production
+  only:
+    - main
+  when: manual
+  needs:
+    - job: deploy_uat
+      optional: true
+  variables:
+    DEPLOY_HOST: 172.31.32.22
+    DEPLOY_APP: helpstrr-prod
+    SSH_PRIVATE_KEY: $SSH_PRIVATE_KEY_PROD
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "🚀 Deploying ${DEPLOY_APP} to PROD (${DEPLOY_HOST})..."
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "BRANCH=${CI_COMMIT_REF_NAME:-main} sudo -E APP_ID=${DEPLOY_APP} bash ${DEPLOY_SCRIPT}"
+  tags:
+    - 2c-dev-team-instance-runner-1
+  allow_failure: false
+  resource_group: production
+  interruptible: false
+
+# -------------------------------------------------------------------
+# ROLLBACK JOBS (manual buttons)
+# -------------------------------------------------------------------
+
+rollback_dev:
+  stage: rollback
+  when: manual
+  environment: development
+  variables:
+    DEPLOY_HOST: 172.31.12.203
+    DEPLOY_APP: helpstrr-dev
+    SSH_PRIVATE_KEY: $SSH_PRIVATE_KEY_DEV
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "⏪ Rolling back ${DEPLOY_APP} on DEV (${DEPLOY_HOST})..."
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "sudo -E APP_ID=${DEPLOY_APP} bash ${ROLLBACK_SCRIPT}"
+  tags:
+    - 2c-dev-team-instance-runner-1
+
+rollback_uat:
+  stage: rollback
+  when: manual
+  environment: uat
+  variables:
+    DEPLOY_HOST: 172.31.8.223
+    DEPLOY_APP: helpstrr-uat
+    SSH_PRIVATE_KEY: $SSH_PRIVATE_KEY_UAT
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "⏪ Rolling back ${DEPLOY_APP} on UAT (${DEPLOY_HOST})..."
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "sudo -E APP_ID=${DEPLOY_APP} bash ${ROLLBACK_SCRIPT}"
+  tags:
+    - 2c-dev-team-instance-runner-1
+
+rollback_prod:
+  stage: rollback
+  when: manual
+  environment: production
+  variables:
+    DEPLOY_HOST: 172.31.32.22
+    DEPLOY_APP: helpstrr-prod
+    SSH_PRIVATE_KEY: $SSH_PRIVATE_KEY_PROD
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "⏪ Rolling back ${DEPLOY_APP} on PROD (${DEPLOY_HOST})..."
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "sudo -E APP_ID=${DEPLOY_APP} bash ${ROLLBACK_SCRIPT}"
+  tags:
+    - 2c-dev-team-instance-runner-1
+  resource_group: production

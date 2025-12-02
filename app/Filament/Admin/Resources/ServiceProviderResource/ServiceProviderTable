@@ -1,0 +1,76 @@
+<?php
+
+namespace App\Filament\Admin\Resources\ServiceProviderResource;
+
+use Filament\Tables;
+
+class ServiceProviderTable
+{
+    public static function getColumns(): array
+    {
+        return [
+            Tables\Columns\TextColumn::make('id')
+                ->label('ID')
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('full_name')
+                ->label('Provider Name')
+                ->getStateUsing(fn($record) => trim($record->first_name . ' ' . $record->last_name))
+                ->searchable(['first_name', 'last_name'])
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('email')
+                ->label('Email')
+                ->searchable()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('created_at')
+                ->label('Registration')
+                ->dateTime('d M Y')
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('is_verified')
+                ->label('Status')
+                ->badge()
+                ->icon(fn($state) => match ($state) {
+                    1 => 'heroicon-o-check-circle',
+                    2 => 'heroicon-o-x-circle',
+                    default => 'heroicon-o-clock',
+                })
+                ->color(fn($state) => match ($state) {
+                    1 => 'success',
+                    2 => 'danger',
+                    default => 'warning',
+                })
+                ->formatStateUsing(fn($state) => match ($state) {
+                    1 => 'Verified',
+                    2 => 'Rejected',
+                    default => 'Pending',
+                }),
+        ];
+    }
+
+    public static function getActions(): array
+    {
+        return [
+            \Filament\Tables\Actions\EditAction::make()->label('Edit'),
+            \Filament\Tables\Actions\DeleteAction::make()->label('Remove'),
+        ];
+    }
+
+    public static function getBulkActions(): array
+    {
+        return [
+            \Filament\Tables\Actions\BulkActionGroup::make([
+                \Filament\Tables\Actions\DeleteBulkAction::make()->label('Delete Selected'),
+            ]),
+        ];
+    }
+
+    public static function getFilters(): array
+    {
+        return [
+            // Add table filters here if needed
+        ];
+    }
+}
