@@ -10,6 +10,10 @@ use App\Models\NewSubcategory;
 use App\Models\Service;
 use App\Models\CustomerAddress;
 use App\Models\TaskPriceComponent;
+use App\Models\ChefCuisine;
+use App\Models\ChefAddonFlag;
+use App\Models\DietaryPreference;
+use App\Models\OptionalFlag;
 use App\Services\PriceCalculationService;
 use App\Services\TaskAllocationService;
 use App\Helpers\AuthHelper;
@@ -392,8 +396,8 @@ class UnifiedBookingController extends Controller
                             'description' => $subcategory->description,
                             'icon' => $subcategory->icon,
                             'color' => $subcategory->color,
-                            'services' => $subcategory->services->where('is_active', true)->map(function ($service) {
-                                return [
+                            'services' => $subcategory->services->where('is_active', true)->map(function ($service) use ($subcategory) {
+                                $serviceData = [
                                     'id' => $service->id,
                                     'name' => $service->name,
                                     'slug' => $service->slug,
@@ -410,6 +414,13 @@ class UnifiedBookingController extends Controller
                                     'is_event_service' => $service->is_event_service,
                                     'is_takeaway' => $service->is_takeaway,
                                 ];
+
+                                // Add chef-specific data for chef services
+                                if ($this->isChefService($subcategory)) {
+                                    $serviceData['chef_data'] = $this->getChefSpecificData($subcategory->id);
+                                }
+
+                                return $serviceData;
                             })->values(),
                         ];
                     })->values(),
@@ -516,6 +527,110 @@ class UnifiedBookingController extends Controller
                 'special_instructions' => $task->special_instructions,
             ],
             'created_at' => $task->created_at->toISOString(),
+        ];
+    }
+
+    /**
+     * Check if a subcategory is chef-related
+     */
+    private function isChefService(NewSubcategory $subcategory): bool
+    {
+        $chefSlugs = ['personal-chef', 'catering-services'];
+        return in_array($subcategory->slug, $chefSlugs);
+    }
+
+    /**
+     * Get chef-specific data for chef services
+     */
+    private function getChefSpecificData(int $subcategoryId): array
+    {
+        // Get all available cuisines (for now, not filtering by service providers)
+        // TODO: In production, filter by service providers who have capabilities in this subcategory
+        $cuisines = ChefCuisine::active()
+            ->ordered()
+            ->get()
+            ->map(function ($cuisine) {
+                return [
+                    'id' => $cuisine->id,
+                    'name' => $cuisine->name,
+                    'slug' => $cuisine->slug,
+                    'description' => $cuisine->description,
+                    'available_sps' => $cuisine->getServiceProvidersCount(),
+                ];
+            });
+
+        // Get all available addon flags
+        $addonFlags = ChefAddonFlag::active()
+            ->ordered()
+            ->get()
+            ->map(function ($flag) {
+                return [
+                    'id' => $flag->id,
+                    'name' => $flag->name,
+                    'slug' => $flag->slug,
+                    'description' => $flag->description,
+                    'available_sps' => $flag->getServiceProvidersCount(),
+                ];
+            });
+
+        // Get all available dietary preferences
+        $dietaryPreferences = DietaryPreference::active()
+            ->ordered()
+            ->get()
+            ->map(function ($preference) {
+                return [
+                    'id' => $preference->id,
+                    'name' => $preference->name,
+                    'slug' => $preference->slug,
+                    'description' => $preference->description,
+                    'available_sps' => $preference->getServiceProvidersCount(),
+                ];
+            });
+
+        // Get all available optional flags
+        $optionalFlags = OptionalFlag::active()
+            ->ordered()
+            ->get()
+            ->map(function ($flag) {
+                return [
+                    'id' => $flag->id,
+                    'name' => $flag->name,
+                    'slug' => $flag->slug,
+                    'description' => $flag->description,
+                    'is_hard_filter' => $flag->is_hard_filter,
+                    'price_modifier' => $flag->price_modifier,
+                    'available_sps' => $flag->getServiceProvidersCount(),
+                ];
+            });
+
+        return [
+            'cuisines' => $cuisines,
+            'addon_flags' => $addonFlags,
+            'dietary_preferences' => $dietaryPreferences,
+            'optional_flags' => $optionalFlags,
+            'selection_rules' => [
+                'cuisines' => [
+                    'min_selections' => 1,
+                    'max_selections' => 5,
+                    'description' => 'Select 1-5 cuisines you would like the chef to prepare'
+                ],
+                'dietary_preferences' => [
+                    'required' => false,
+                    'single_select' => true,
+                    'description' => 'Select your dietary preference (optional)'
+                ],
+                'addon_flags' => [
+                    'description' => 'Select additional chef capabilities',
+                    'multiple_select' => true,
+                    'price_impact' => false,
+                ],
+                'optional_flags' => [
+                    'description' => 'Select optional preferences (may affect pricing)',
+                    'multiple_select' => true,
+                    'price_impact' => true,
+                    'hard_filters' => 'Some options are mandatory if selected',
+                ]
+            ]
         ];
     }
 }

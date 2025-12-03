@@ -45,6 +45,7 @@ class DatabaseSeeder extends Seeder
                 CategorySeeder::class,
                 SubcategorySeeder::class,
                 ChefCuisineSeeder::class,
+                ChefAddonFlagSeeder::class,
                 DietaryPreferenceSeeder::class,
                 OptionalFlagSeeder::class,
                 ComprehensiveTestDataSeeder::class,
