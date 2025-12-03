@@ -40,7 +40,7 @@ class Subcategory extends Model
     // Relationships
     public function category(): BelongsTo
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(NewCategory::class);
     }
 
     public function tasks(): HasMany

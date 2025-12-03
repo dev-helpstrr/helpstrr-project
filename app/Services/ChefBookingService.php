@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Category;
-use App\Models\Subcategory;
+use App\Models\NewCategory;
+use App\Models\NewSubcategory;
 use App\Models\ChefCuisine;
 use App\Models\DietaryPreference;
 use App\Models\ChefAddonFlag;
@@ -37,7 +37,7 @@ class ChefBookingService
      */
     public function getAvailableServices(): array
     {
-        $chefCategory = Category::where('slug', 'chef')->active()->first();
+        $chefCategory = NewCategory::where('slug', 'chef')->active()->first();
         
         if (!$chefCategory) {
             return [

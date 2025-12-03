@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\Mobile\Customer;
 
 use App\Http\Controllers\Controller;
-use App\Models\Category;
-use App\Models\Subcategory;
+use App\Models\NewCategory;
+use App\Models\NewSubcategory;
 use App\Models\ServiceProvider;
 use App\Models\PlatformSetting;
 use Illuminate\Http\Request;
@@ -18,7 +18,7 @@ class ServiceController extends Controller
     public function getCategories()
     {
         try {
-            $categories = Category::where('is_active', true)
+            $categories = NewCategory::where('is_active', true)
                 ->with(['subcategories' => function($query) {
                     $query->where('is_active', true)
                           ->select('id', 'category_id', 'name', 'description', 'image', 'base_price', 'duration_minutes');
@@ -48,7 +48,7 @@ class ServiceController extends Controller
     public function getServicesByCategory($categoryId)
     {
         try {
-            $category = Category::where('id', $categoryId)
+            $category = NewCategory::where('id', $categoryId)
                 ->where('is_active', true)
                 ->first();
 

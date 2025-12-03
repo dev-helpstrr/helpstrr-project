@@ -34,12 +34,12 @@ class SpCapability extends Model
 
     public function category(): BelongsTo
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(NewCategory::class);
     }
 
     public function subcategory(): BelongsTo
     {
-        return $this->belongsTo(Subcategory::class);
+        return $this->belongsTo(NewSubcategory::class);
     }
 
     public function service(): BelongsTo

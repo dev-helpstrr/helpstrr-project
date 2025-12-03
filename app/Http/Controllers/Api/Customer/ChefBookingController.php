@@ -197,7 +197,7 @@ class ChefBookingController extends Controller
 
         $bookingData = array_merge($validator->validated(), [
             'customer_id' => $customer->id,
-            'category_id' => \App\Models\Category::where('slug', 'chef')->first()->id,
+            'category_id' => \App\Models\NewCategory::where('slug', 'chef')->first()->id,
         ]);
 
         $result = $this->chefBookingService->getPricingPreview($bookingData);
@@ -285,7 +285,7 @@ class ChefBookingController extends Controller
         // Create a mock task to check availability using allocation engine
         $mockTaskData = array_merge($validator->validated(), [
             'customer_id' => $customer->id,
-            'category_id' => \App\Models\Category::where('slug', 'chef')->first()->id,
+            'category_id' => \App\Models\NewCategory::where('slug', 'chef')->first()->id,
             'requested_hours' => 2, // Default for availability check
         ]);
 

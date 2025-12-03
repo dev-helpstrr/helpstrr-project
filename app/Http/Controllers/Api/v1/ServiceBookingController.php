@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\v1;
 use App\Http\Controllers\Controller;
 use App\Models\Task;
 use App\Models\Customer;
-use App\Models\Category;
-use App\Models\Subcategory;
+use App\Models\NewCategory;
+use App\Models\NewSubcategory;
 use App\Models\Service;
 use App\Models\CustomerAddress;
 use App\Models\TaskPriceComponent;
@@ -100,8 +100,8 @@ class ServiceBookingController extends Controller
             }
 
             // Validate service hierarchy
-            $category = Category::find($data['category_id']);
-            $subcategory = Subcategory::where('id', $data['subcategory_id'])
+            $category = NewCategory::find($data['category_id']);
+            $subcategory = NewSubcategory::where('id', $data['subcategory_id'])
                 ->where('category_id', $data['category_id'])
                 ->first();
             
@@ -332,7 +332,7 @@ class ServiceBookingController extends Controller
 
             $data = $validator->validated();
 
-            $categoriesQuery = Category::with(['subcategories.services'])
+            $categoriesQuery = NewCategory::with(['subcategories.services'])
                 ->where('is_active', true);
 
             if (!empty($data['category_id'])) {

@@ -100,7 +100,7 @@ class TaskController extends Controller
         ]);
 
         // For chef bookings, validate the complete flow
-        if ($request->category_id && \App\Models\Category::find($request->category_id)->slug === 'chef') {
+        if ($request->category_id && \App\Models\NewCategory::find($request->category_id)->slug === 'chef') {
             $chefValidation = $this->chefBookingService->validateChefBooking($taskData);
             if (!$chefValidation['valid']) {
                 return response()->json([
@@ -292,7 +292,7 @@ class TaskController extends Controller
         ]);
 
         // For chef bookings, use the chef booking service
-        if (\App\Models\Category::find($request->category_id)->slug === 'chef') {
+        if (\App\Models\NewCategory::find($request->category_id)->slug === 'chef') {
             $result = $this->chefBookingService->getPricingPreview($taskData);
         } else {
             // For other categories, use the pricing engine directly
