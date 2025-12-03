@@ -104,12 +104,12 @@ class Task extends Model
 
     public function category(): BelongsTo
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(NewCategory::class, 'category_id');
     }
 
     public function subcategory(): BelongsTo
     {
-        return $this->belongsTo(Subcategory::class);
+        return $this->belongsTo(NewSubcategory::class, 'subcategory_id');
     }
 
     public function service(): BelongsTo
