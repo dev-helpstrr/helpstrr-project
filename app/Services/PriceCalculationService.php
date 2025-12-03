@@ -7,6 +7,7 @@ use App\Models\Task;
 use App\Models\Service;
 use App\Models\Customer;
 use App\Models\Subcategory;
+use App\Models\NewSubcategory;
 use App\Models\PlatformSetting;
 
 class PriceCalculationService
@@ -21,12 +22,18 @@ class PriceCalculationService
     {
         // Get base service pricing
         $service = $task->service ?? Service::find($task->service_id);
-        $subcategory = $task->subcategory ?? $service->subcategory ?? null;
-
-        // ...
-
-        $priceComponents['consultation_fee'] = $this->calculateConsultationFee($task, $subcategory);
-
+        
+        // Get subcategory - handle both old and new subcategory models
+        $subcategory = null;
+        if ($task->subcategory_id) {
+            // Try to get NewSubcategory first (new system)
+            $subcategory = NewSubcategory::find($task->subcategory_id);
+            
+            // If not found, try old Subcategory model (backward compatibility)
+            if (!$subcategory) {
+                $subcategory = Subcategory::find($task->subcategory_id);
+            }
+        }
 
         // Base calculations
         $baseAmount = $service->base_price ?? 0;
@@ -222,16 +229,23 @@ class PriceCalculationService
      * Calculate consultation fee
      *
      * @param Task $task
-     * @param Subcategory $subcategory
+     * @param Subcategory|NewSubcategory|null $subcategory
      * @return float
      */
-    private function calculateConsultationFee(Task $task, ?Subcategory $subcategory = null): float
+    private function calculateConsultationFee(Task $task, $subcategory = null): float
     {
         if (! $subcategory) {
             return 0.0;
         }
 
-        return $subcategory->consultation_fee ?? 0.0;
+        // Handle both old and new subcategory models
+        if ($subcategory instanceof NewSubcategory) {
+            return $subcategory->consultation_fee ?? 0.0;
+        } elseif ($subcategory instanceof Subcategory) {
+            return $subcategory->consultation_fee ?? 0.0;
+        }
+
+        return 0.0;
     }
 
     /**
