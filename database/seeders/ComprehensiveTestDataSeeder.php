@@ -18,6 +18,14 @@ use App\Models\OptionalFlag;
 use App\Models\ChefAddonFlag;
 use App\Models\Task;
 use App\Models\TaskPriceComponent;
+use App\Models\SPCapability;
+use App\Models\SPCuisineCapability;
+use App\Models\SPDietaryCapability;
+use App\Models\SPAddonCapability;
+use App\Models\SPOptionalCapability;
+use App\Models\SpLocationTracking;
+use App\Models\TaskBroadcast;
+use App\Models\TaskAssignmentLog;
 use Illuminate\Support\Facades\Hash;
 
 class ComprehensiveTestDataSeeder extends Seeder
@@ -47,8 +55,17 @@ class ComprehensiveTestDataSeeder extends Seeder
         // Create chef-specific data
         $this->createChefData();
         
+        // Create provider capabilities (38 filtering criteria)
+        $this->createProviderCapabilities();
+        
+        // Create location tracking data
+        $this->createLocationTrackingData();
+        
         // Create sample tasks/bookings
         $this->createSampleTasks();
+        
+        // Create task broadcasts for testing auto-assignment
+        $this->createTaskBroadcasts();
 
         $this->command->info('Comprehensive test data created successfully!');
     }
@@ -664,5 +681,293 @@ class ComprehensiveTestDataSeeder extends Seeder
                 'total_incl_gst' => $taskData['final_amount'],
             ]);
         }
+    }
+
+    private function createProviderCapabilities(): void
+    {
+        $this->command->info('Creating provider capabilities for 38 filtering criteria...');
+
+        $serviceProviders = ServiceProvider::all();
+        $categories = Category::all();
+        $subcategories = Subcategory::all();
+        $cuisines = ChefCuisine::all();
+        $dietaryPreferences = DietaryPreference::all();
+        $optionalFlags = OptionalFlag::all();
+        $addonFlags = ChefAddonFlag::all();
+
+        foreach ($serviceProviders as $sp) {
+            // Create basic capabilities for each category/subcategory
+            foreach ($categories as $category) {
+                foreach ($category->subcategories as $subcategory) {
+                    SPCapability::updateOrCreate([
+                        'service_provider_id' => $sp->id,
+                        'category_id' => $category->id,
+                        'subcategory_id' => $subcategory->id,
+                    ], [
+                        'is_active' => true,
+                        'hourly_rate' => rand(150, 500),
+                        'min_hours' => rand(2, 4),
+                        'max_hours' => rand(8, 12),
+                        'max_pax_capacity' => rand(5, 20),
+                        'max_travel_distance_km' => rand(10, 50),
+                        'night_shift_available' => rand(0, 1),
+                        'weekend_available' => rand(0, 1),
+                        'emergency_available' => rand(0, 1),
+                        'advance_booking_days' => rand(1, 30),
+                        'cancellation_hours' => rand(2, 24),
+                        'experience_years' => rand(1, 15),
+                        'certification_level' => ['basic', 'intermediate', 'advanced', 'expert'][rand(0, 3)],
+                        'equipment_provided' => rand(0, 1),
+                        'materials_provided' => rand(0, 1),
+                        'insurance_covered' => rand(0, 1),
+                        'background_verified' => true,
+                        'language_skills' => json_encode(['English', 'Hindi']),
+                        'special_skills' => json_encode(['Quick Service', 'Quality Focus']),
+                        'work_environment_preferences' => json_encode(['Indoor', 'Outdoor']),
+                        'customer_interaction_level' => ['minimal', 'moderate', 'high'][rand(0, 2)],
+                        'physical_requirements_met' => true,
+                        'availability_schedule' => json_encode([
+                            'monday' => ['09:00-18:00'],
+                            'tuesday' => ['09:00-18:00'],
+                            'wednesday' => ['09:00-18:00'],
+                            'thursday' => ['09:00-18:00'],
+                            'friday' => ['09:00-18:00'],
+                            'saturday' => ['10:00-16:00'],
+                            'sunday' => ['10:00-16:00'],
+                        ]),
+                        'seasonal_availability' => json_encode(['all_year']),
+                        'location_flexibility' => rand(0, 1),
+                        'team_work_capability' => rand(0, 1),
+                        'technology_comfort_level' => ['basic', 'intermediate', 'advanced'][rand(0, 2)],
+                        'customer_rating_threshold' => 4.0,
+                        'service_guarantee_offered' => rand(0, 1),
+                        'eco_friendly_practices' => rand(0, 1),
+                        'cultural_sensitivity_training' => rand(0, 1),
+                        'emergency_contact_available' => true,
+                        'real_time_tracking_enabled' => rand(0, 1),
+                        'quality_assurance_certified' => rand(0, 1),
+                        'continuous_improvement_participation' => rand(0, 1),
+                    ]);
+                }
+            }
+
+            // Create cuisine capabilities for chef providers
+            if ($sp->spUser->intrested_role === 'chef') {
+                foreach ($cuisines as $cuisine) {
+                    SPCuisineCapability::updateOrCreate([
+                        'service_provider_id' => $sp->id,
+                        'chef_cuisine_id' => $cuisine->id,
+                    ], [
+                        'is_active' => rand(0, 1),
+                        'proficiency_level' => ['beginner', 'intermediate', 'expert'][rand(0, 2)],
+                        'years_experience' => rand(1, 10),
+                    ]);
+                }
+
+                // Create dietary capabilities
+                foreach ($dietaryPreferences as $dietary) {
+                    SPDietaryCapability::updateOrCreate([
+                        'service_provider_id' => $sp->id,
+                        'dietary_preference_id' => $dietary->id,
+                    ], [
+                        'is_active' => rand(0, 1),
+                        'specialization_level' => ['basic', 'intermediate', 'expert'][rand(0, 2)],
+                    ]);
+                }
+
+                // Create addon capabilities
+                foreach ($addonFlags as $addon) {
+                    SPAddonCapability::updateOrCreate([
+                        'service_provider_id' => $sp->id,
+                        'chef_addon_flag_id' => $addon->id,
+                    ], [
+                        'is_active' => rand(0, 1),
+                        'additional_charge' => rand(0, 200),
+                    ]);
+                }
+            }
+
+            // Create optional capabilities
+            foreach ($optionalFlags as $flag) {
+                SPOptionalCapability::updateOrCreate([
+                    'service_provider_id' => $sp->id,
+                    'optional_flag_id' => $flag->id,
+                ], [
+                    'is_active' => rand(0, 1),
+                    'proficiency_level' => ['basic', 'intermediate', 'advanced'][rand(0, 2)],
+                ]);
+            }
+
+            // Update provider with comprehensive metrics
+            $sp->update([
+                'rating' => rand(35, 50) / 10, // 3.5 to 5.0
+                'total_ratings' => rand(10, 200),
+                'tasks_completed' => rand(5, 150),
+                'acceptance_rate' => rand(70, 100),
+                'punctuality_score' => rand(70, 100),
+                'behaviour_score' => rand(75, 100),
+                'cancellation_score' => rand(0, 20),
+                'complaint_score' => rand(0, 15),
+                'rejection_frequency' => rand(0, 30),
+                'is_gold_level' => rand(0, 1),
+                'last_assigned_at' => now()->subDays(rand(0, 30)),
+                'cooldown_until' => null, // No cooldown for test data
+            ]);
+        }
+    }
+
+    private function createLocationTrackingData(): void
+    {
+        $this->command->info('Creating location tracking data...');
+
+        $serviceProviders = ServiceProvider::all();
+        $mumbaiCoordinates = [
+            ['lat' => 19.0760, 'lng' => 72.8777], // Mumbai Central
+            ['lat' => 19.0896, 'lng' => 72.8656], // Bandra
+            ['lat' => 19.1136, 'lng' => 72.8697], // Andheri
+            ['lat' => 19.0330, 'lng' => 72.8570], // Worli
+            ['lat' => 19.0728, 'lng' => 72.8826], // Fort
+        ];
+
+        foreach ($serviceProviders as $sp) {
+            $coordinates = $mumbaiCoordinates[array_rand($mumbaiCoordinates)];
+            
+            // Create current location
+            SpLocationTracking::create([
+                'service_provider_id' => $sp->id,
+                'latitude' => $coordinates['lat'] + (rand(-100, 100) / 10000), // Add small variation
+                'longitude' => $coordinates['lng'] + (rand(-100, 100) / 10000),
+                'accuracy' => rand(5, 20),
+                'speed' => rand(0, 50),
+                'heading' => rand(0, 360),
+                'altitude' => rand(10, 100),
+                'is_active' => true,
+                'battery_level' => rand(20, 100),
+                'network_type' => ['4G', '5G', 'WiFi'][rand(0, 2)],
+                'app_version' => '1.0.0',
+                'device_info' => json_encode([
+                    'model' => 'Test Device',
+                    'os' => 'Android 12',
+                    'app_version' => '1.0.0'
+                ]),
+            ]);
+
+            // Create historical location data
+            for ($i = 1; $i <= 10; $i++) {
+                SpLocationTracking::create([
+                    'service_provider_id' => $sp->id,
+                    'latitude' => $coordinates['lat'] + (rand(-200, 200) / 10000),
+                    'longitude' => $coordinates['lng'] + (rand(-200, 200) / 10000),
+                    'accuracy' => rand(5, 30),
+                    'speed' => rand(0, 60),
+                    'heading' => rand(0, 360),
+                    'altitude' => rand(10, 100),
+                    'is_active' => false,
+                    'battery_level' => rand(20, 100),
+                    'network_type' => ['4G', '5G', 'WiFi'][rand(0, 2)],
+                    'app_version' => '1.0.0',
+                    'created_at' => now()->subHours($i),
+                    'updated_at' => now()->subHours($i),
+                ]);
+            }
+
+            // Update SP user with current location
+            $sp->spUser->update([
+                'latitude' => $coordinates['lat'],
+                'longitude' => $coordinates['lng'],
+                'is_online' => rand(0, 1),
+                'last_seen_at' => now()->subMinutes(rand(0, 120)),
+            ]);
+        }
+    }
+
+    private function createTaskBroadcasts(): void
+    {
+        $this->command->info('Creating task broadcasts for auto-assignment testing...');
+
+        $tasks = Task::where('status', Task::STATUS_REQUESTED)->get();
+        $serviceProviders = ServiceProvider::active()->get();
+
+        foreach ($tasks as $task) {
+            // Create some sample broadcasts
+            $selectedProviders = $serviceProviders->random(min(5, $serviceProviders->count()));
+            
+            foreach ($selectedProviders as $index => $sp) {
+                $broadcast = TaskBroadcast::create([
+                    'task_id' => $task->id,
+                    'service_provider_id' => $sp->id,
+                    'broadcast_round' => $index < 2 ? 'A' : 'B',
+                    'distance_km' => rand(1, 15),
+                    'sp_rating' => $sp->rating,
+                    'sp_rank_in_round' => $index + 1,
+                    'sent_at' => now()->subMinutes(rand(5, 60)),
+                    'expires_at' => now()->addMinutes(rand(30, 120)),
+                    'timeout_seconds' => 60,
+                    'response' => ['pending', 'accepted', 'rejected', 'timeout'][rand(0, 3)],
+                    'responded_at' => rand(0, 1) ? now()->subMinutes(rand(1, 30)) : null,
+                    'response_time_seconds' => rand(10, 300),
+                    'rejection_reason' => rand(0, 1) ? 'Not available at that time' : null,
+                ]);
+
+                // Create corresponding assignment log
+                TaskAssignmentLog::create([
+                    'task_id' => $task->id,
+                    'service_provider_id' => $sp->id,
+                    'action_type' => $this->getActionTypeFromResponse($broadcast->response),
+                    'action_timestamp' => $broadcast->responded_at ?? $broadcast->sent_at,
+                    'response_time_seconds' => $broadcast->response_time_seconds,
+                    'distance_km' => $broadcast->distance_km,
+                    'priority_score' => $this->calculateMockPriorityScore($sp, $broadcast->distance_km, $broadcast->response_time_seconds),
+                    'conflict_resolution_applied' => rand(0, 10) === 0, // 10% chance
+                    'assignment_round' => $index + 1,
+                    'broadcast_id' => $broadcast->id,
+                    'rejection_reason' => $broadcast->rejection_reason,
+                    'auto_assigned' => false,
+                    'metadata' => [
+                        'provider_rating' => $sp->rating,
+                        'provider_experience' => $sp->experience_years,
+                        'mock_data' => true,
+                    ],
+                ]);
+            }
+        }
+
+        $this->command->info('✅ Task assignment logs created successfully');
+    }
+
+    /**
+     * Get action type from broadcast response
+     */
+    private function getActionTypeFromResponse(string $response): string
+    {
+        return match($response) {
+            'accepted' => TaskAssignmentLog::ACTION_ACCEPTED,
+            'rejected' => TaskAssignmentLog::ACTION_REJECTED,
+            'timeout' => TaskAssignmentLog::ACTION_TIMEOUT,
+            default => TaskAssignmentLog::ACTION_BROADCAST_SENT,
+        };
+    }
+
+    /**
+     * Calculate mock priority score for testing
+     */
+    private function calculateMockPriorityScore(ServiceProvider $sp, float $distance, int $responseTime): float
+    {
+        $score = 0;
+        
+        // Distance factor (closer = higher score)
+        $score += max(0, 100 - ($distance * 2));
+        
+        // Response time factor (faster = higher score)
+        $score += max(0, 100 - ($responseTime / 10));
+        
+        // Provider rating factor
+        $score += $sp->rating * 10;
+        
+        // Provider metrics factor
+        $score += ($sp->acceptance_rate ?? 80) * 0.5;
+        $score += ($sp->punctuality_score ?? 85) * 0.3;
+        
+        return round($score, 2);
     }
 }

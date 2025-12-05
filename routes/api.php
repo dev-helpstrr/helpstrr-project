@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\v1\UnifiedBookingController;
 use App\Http\Controllers\Api\v1\CustomerOrderController;
 use App\Http\Controllers\Api\v1\ServiceProviderTaskController;
 use App\Http\Controllers\Api\v1\TaskManagementController;
+// Removed duplicate controllers - functionality integrated into existing controllers
 use App\Http\Controllers\Api\Customer\ChefBookingController;
 use NotificationChannels\WebPush\PushSubscription as WebPushSubscription;
 
@@ -136,7 +137,11 @@ Route::prefix('v1')->group(function () {
     Route::prefix('tasks')->group(function () {
         Route::put('/{taskId}/status', [TaskManagementController::class, 'updateTaskStatus']);
         Route::post('/{taskId}/cancel', [TaskManagementController::class, 'cancelTask']);
+        Route::get('/{taskId}/cancellation-preview', [TaskManagementController::class, 'getCancellationPreview']);
+        Route::get('cancellation-reasons', [TaskManagementController::class, 'getCancellationReasons']);
         Route::post('/{taskId}/rate', [TaskManagementController::class, 'rateTask']);
+        Route::post('/{taskId}/comprehensive-rating', [TaskManagementController::class, 'submitComprehensiveRating']);
+        Route::get('/{taskId}/rating-form', [TaskManagementController::class, 'getRatingForm']);
         Route::get('/{taskId}', [TaskManagementController::class, 'getTaskDetails']);
     });
 
@@ -152,10 +157,18 @@ Route::prefix('v1')->group(function () {
     Route::prefix('sp')->group(function () {
         Route::get('/dashboard', [ServiceProviderTaskController::class, 'getDashboard']);
         Route::get('/tasks', [ServiceProviderTaskController::class, 'getAssignedTasks']);
+        Route::get('/available-tasks', [ServiceProviderTaskController::class, 'getAvailableTasks']); // NEW: Filtered tasks
         Route::post('/task-requests/{broadcastId}/accept', [ServiceProviderTaskController::class, 'acceptTaskRequest']);
+        Route::post('/task-requests/{broadcastId}/accept-advanced', [ServiceProviderTaskController::class, 'acceptTaskWithConflictResolution']); // NEW: With conflict resolution
         Route::post('/task-requests/{broadcastId}/reject', [ServiceProviderTaskController::class, 'rejectTaskRequest']);
+        Route::post('/task-requests/{broadcastId}/reject-advanced', [ServiceProviderTaskController::class, 'rejectTaskWithFallback']); // NEW: With fallback
         Route::get('/earnings', [ServiceProviderTaskController::class, 'getEarnings']);
         Route::put('/availability', [ServiceProviderTaskController::class, 'updateAvailability']);
+    });
+
+    // === Task Assignment Management APIs ===
+    Route::prefix('task-assignment')->group(function () {
+        Route::post('/timeout/{taskId}', [ServiceProviderTaskController::class, 'handleTaskTimeout']); // NEW: Handle timeouts
     });
 
     // === Allocation Engine APIs ===
@@ -193,4 +206,17 @@ Route::prefix('v1')->group(function () {
         Route::post('task-notification', [\App\Http\Controllers\Api\CommunicationController::class, 'sendTaskNotification']);
         Route::get('notification-history', [\App\Http\Controllers\Api\CommunicationController::class, 'getNotificationHistory']);
     });
+
+    // === Provider Search and Filter APIs ===
+    Route::prefix('providers')->group(function () {
+        Route::post('search', [ServiceProviderTaskController::class, 'searchProviders']);
+        Route::get('{providerId}/status', [ServiceProviderTaskController::class, 'getProviderStatus']);
+        Route::post('{providerId}/location', [ServiceProviderTaskController::class, 'updateProviderLocation']);
+    });
+
+    // === Auto-Assignment APIs (integrated into existing TaskAllocationService) ===
+    // Auto-assignment is handled by your existing TaskAllocationService
+    
+    // === Enhanced Task Management APIs (integrated above) ===
+    // Cancellation and rating functionality enhanced in TaskManagementController
 });
