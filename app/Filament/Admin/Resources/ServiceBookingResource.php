@@ -73,21 +73,14 @@ class ServiceBookingResource extends Resource
                     ->sortable()
                     ->description(fn (Task $record): string => $record->customer->phone ?? ''),
                 
-                Tables\Columns\TextColumn::make('serviceProvider.spUser.full_name')
+                Tables\Columns\TextColumn::make('serviceProvider.spUser.name')
                     ->label('Service Provider')
-                    ->searchable(['service_providers.sp_user_id'])
+                    ->searchable()
                     ->sortable()
                     ->placeholder('Not Assigned')
-                    ->formatStateUsing(fn (Task $record): string => 
-                        $record->serviceProvider && $record->serviceProvider->spUser ? 
-                        $record->serviceProvider->spUser->getFullNameAttribute() : 
-                        'Not Assigned'
-                    )
                     ->description(fn (Task $record): ?string => 
                         $record->serviceProvider ? 
-                        "⭐ " . number_format($record->serviceProvider->rating, 1) . "/5 • " . 
-                        ($record->serviceProvider->spUser->is_online ? '🟢 Online' : '🔴 Offline') . 
-                        " • " . $record->serviceProvider->spUser->mobile1_number : 
+                        "⭐ {$record->serviceProvider->rating}/5 • {$record->serviceProvider->spUser->phone}" : 
                         null
                     ),
                 
@@ -204,22 +197,14 @@ class ServiceBookingResource extends Resource
                                 return ServiceProvider::with('spUser')
                                     ->active()
                                     ->verified()
-                                    ->whereHas('capabilities', function ($query) use ($record) {
-                                        $query->where('category_id', $record->category_id)
-                                              ->where('is_active', true);
-                                    })
+                                    ->byCategory($record->category_id)
                                     ->get()
                                     ->mapWithKeys(function ($sp) {
-                                        $name = $sp->spUser ? $sp->spUser->getFullNameAttribute() : 'Unknown';
-                                        $rating = number_format($sp->rating, 1);
-                                        $status = $sp->spUser && $sp->spUser->is_online ? '🟢' : '🔴';
-                                        return [$sp->id => "{$status} {$name} (⭐ {$rating}/5 • {$sp->total_ratings} reviews)"];
+                                        return [$sp->id => "{$sp->spUser->name} (⭐ {$sp->rating}/5)"];
                                     });
                             })
                             ->required()
-                            ->searchable()
-                            ->placeholder('Select a service provider')
-                            ->helperText('Only active, verified providers with matching capabilities are shown'),
+                            ->searchable(),
                         Forms\Components\Textarea::make('assignment_notes')
                             ->label('Assignment Notes')
                             ->placeholder('Optional notes for the assignment'),
