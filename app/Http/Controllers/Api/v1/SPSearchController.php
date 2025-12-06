@@ -17,6 +17,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Helpers\AuthHelper;
 
 class SPSearchController extends Controller
 {
@@ -28,8 +29,32 @@ class SPSearchController extends Controller
     public function searchServiceProviders(Request $request)
     {
         try {
+            // Token validation
+            $phone = $request->input('phone');
+            $token = $request->input('token');
+            
+            if (!$phone || !$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phone and token are required',
+                    'status_code' => 400
+                ], 400);
+            }
+
+            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+
+            if (!$tokenCheck['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tokenCheck['message'],
+                    'status_code' => $tokenCheck['status_code']
+                ], $tokenCheck['status_code']);
+            }
+
             // Validate request parameters
             $validator = Validator::make($request->all(), [
+                'phone' => 'required|string',
+                'token' => 'required|string',
                 'latitude' => 'required|numeric|between:-90,90',
                 'longitude' => 'required|numeric|between:-180,180',
                 'category_id' => 'required|integer|exists:new_categories,id',
@@ -544,6 +569,28 @@ class SPSearchController extends Controller
     public function getSearchOptions(Request $request)
     {
         try {
+            // Token validation
+            $phone = $request->input('phone');
+            $token = $request->input('token');
+            
+            if (!$phone || !$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phone and token are required',
+                    'status_code' => 400
+                ], 400);
+            }
+
+            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+
+            if (!$tokenCheck['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tokenCheck['message'],
+                    'status_code' => $tokenCheck['status_code']
+                ], $tokenCheck['status_code']);
+            }
+
             $categoryId = $request->get('category_id');
             
             $data = [
@@ -715,7 +762,31 @@ class SPSearchController extends Controller
     public function updateSPStatus(Request $request, $spId)
     {
         try {
+            // Token validation
+            $phone = $request->input('phone');
+            $token = $request->input('token');
+            
+            if (!$phone || !$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phone and token are required',
+                    'status_code' => 400
+                ], 400);
+            }
+
+            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+
+            if (!$tokenCheck['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tokenCheck['message'],
+                    'status_code' => $tokenCheck['status_code']
+                ], $tokenCheck['status_code']);
+            }
+
             $validator = Validator::make($request->all(), [
+                'phone' => 'required|string',
+                'token' => 'required|string',
                 'is_online' => 'required|boolean',
                 'last_seen_at' => 'nullable|date',
             ]);
@@ -768,9 +839,31 @@ class SPSearchController extends Controller
     /**
      * Get SP user status (active/inactive)
      */
-    public function getSPStatus($spId)
+    public function getSPStatus(Request $request, $spId)
     {
         try {
+            // Token validation
+            $phone = $request->input('phone');
+            $token = $request->input('token');
+            
+            if (!$phone || !$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phone and token are required',
+                    'status_code' => 400
+                ], 400);
+            }
+
+            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+
+            if (!$tokenCheck['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tokenCheck['message'],
+                    'status_code' => $tokenCheck['status_code']
+                ], $tokenCheck['status_code']);
+            }
+
             $sp = ServiceProvider::with('spUser')->find($spId);
             
             if (!$sp) {
@@ -853,9 +946,31 @@ class SPSearchController extends Controller
     /**
      * Get SP current location
      */
-    public function getSPLocation($spId)
+    public function getSPLocation(Request $request, $spId)
     {
         try {
+            // Token validation
+            $phone = $request->input('phone');
+            $token = $request->input('token');
+            
+            if (!$phone || !$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phone and token are required',
+                    'status_code' => 400
+                ], 400);
+            }
+
+            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+
+            if (!$tokenCheck['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tokenCheck['message'],
+                    'status_code' => $tokenCheck['status_code']
+                ], $tokenCheck['status_code']);
+            }
+
             $sp = ServiceProvider::with('spUser')->find($spId);
             
             if (!$sp) {
@@ -898,7 +1013,31 @@ class SPSearchController extends Controller
     public function updateSPLocation(Request $request, $spId)
     {
         try {
+            // Token validation
+            $phone = $request->input('phone');
+            $token = $request->input('token');
+            
+            if (!$phone || !$token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Phone and token are required',
+                    'status_code' => 400
+                ], 400);
+            }
+
+            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+
+            if (!$tokenCheck['valid']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $tokenCheck['message'],
+                    'status_code' => $tokenCheck['status_code']
+                ], $tokenCheck['status_code']);
+            }
+
             $validator = Validator::make($request->all(), [
+                'phone' => 'required|string',
+                'token' => 'required|string',
                 'latitude' => 'required|numeric|between:-90,90',
                 'longitude' => 'required|numeric|between:-180,180',
                 'address' => 'nullable|string|max:500',
