@@ -73,6 +73,7 @@ class SPUser extends Authenticatable implements HasAvatar, HasName
         'can_work_weekends',
         'can_work_nights',
         'additional_notes',
+        'last_seen_at',
 
         'service_category_id',];
 
@@ -94,6 +95,7 @@ class SPUser extends Authenticatable implements HasAvatar, HasName
         'can_work_weekends' => 'boolean',
         'can_work_nights' => 'boolean',
         'last_login' => 'datetime',
+        'last_seen_at' => 'datetime',
         'avg_rating' => 'decimal:2',
         'expected_hourly_rate' => 'decimal:2',
         'expected_daily_rate' => 'decimal:2',
@@ -311,9 +313,14 @@ class SPUser extends Authenticatable implements HasAvatar, HasName
         return $now >= $startTime && $now <= $endTime;
     }
 
+    public function hasCoordinates(): bool
+    {
+        return !empty($this->latitude) && !empty($this->longitude);
+    }
+
     public function getDistanceFrom(float $latitude, float $longitude): float
     {
-        if (!$this->latitude || !$this->longitude) {
+        if (!$this->hasCoordinates()) {
             return 0;
         }
 

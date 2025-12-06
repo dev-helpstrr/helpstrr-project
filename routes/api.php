@@ -193,4 +193,17 @@ Route::prefix('v1')->group(function () {
         Route::post('task-notification', [\App\Http\Controllers\Api\CommunicationController::class, 'sendTaskNotification']);
         Route::get('notification-history', [\App\Http\Controllers\Api\CommunicationController::class, 'getNotificationHistory']);
     });
+
+    // === Service Provider Search APIs ===
+    Route::prefix('sp-search')->group(function () {
+        Route::post('/', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'searchServiceProviders']);
+        Route::get('/options', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'getSearchOptions']);
+        Route::get('/{spId}/details', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'getServiceProviderDetails']);
+        Route::put('/{spId}/status', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'updateSPStatus']);
+        Route::get('/{spId}/status', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'getSPStatus']);
+        
+        // SP Location Management
+        Route::get('/{spId}/location', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'getSPLocation']);
+        Route::put('/{spId}/location', [\App\Http\Controllers\Api\v1\SPSearchController::class, 'updateSPLocation']);
+    });
 });
