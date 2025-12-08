@@ -2,22 +2,24 @@
 
 namespace App\Http\Controllers\Api\v1;
 
-use App\Http\Controllers\Controller;
-use App\Models\ServiceProvider;
+use Carbon\Carbon;
 use App\Models\SPUser;
-use App\Models\CustomerAddress;
-use App\Models\NewCategory;
-use App\Models\NewSubcategory;
+use App\Helpers\AuthHelper;
 use App\Models\ChefCuisine;
-use App\Models\DietaryPreference;
-use App\Models\ChefAddonFlag;
+use App\Models\NewCategory;
 use App\Models\OptionalFlag;
 use Illuminate\Http\Request;
+use App\Models\ChefAddonFlag;
+use App\Models\NewSubcategory;
+use App\Models\CustomerAddress;
+use App\Models\ServiceProvider;
+use App\Models\DietaryPreference;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-use App\Helpers\AuthHelper;
+use App\Http\Controllers\Controller;
+use App\Models\Task;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Validator;
 
 class SPSearchController extends Controller
 {
@@ -29,115 +31,281 @@ class SPSearchController extends Controller
     public function searchServiceProviders(Request $request)
     {
         try {
-            // Token validation
+            // 1) Token validation
             $phone = $request->input('phone');
             $token = $request->input('token');
-            
+
             if (!$phone || !$token) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Phone and token are required',
-                    'status_code' => 400
+                    'status_code' => 400,
                 ], 400);
             }
 
-            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+            $tokenCheck = AuthHelper::validateToken('s_p_users', $phone, $token, 'mobile1_number');
 
             if (!$tokenCheck['valid']) {
                 return response()->json([
                     'success' => false,
                     'message' => $tokenCheck['message'],
-                    'status_code' => $tokenCheck['status_code']
+                    'status_code' => $tokenCheck['status_code'],
                 ], $tokenCheck['status_code']);
             }
 
-            // Validate request parameters
+            // 2) Only required payload fields
             $validator = Validator::make($request->all(), [
-                'phone' => 'required|string',
-                'token' => 'required|string',
-                'latitude' => 'required|numeric|between:-90,90',
-                'longitude' => 'required|numeric|between:-180,180',
-                'category_id' => 'required|integer|exists:new_categories,id',
-                'subcategory_id' => 'required|integer|exists:new_subcategories,id',
-                'scheduled_at' => 'required|date|after:' . now()->addHours(2)->toDateTimeString(),
-                'pax_count' => 'nullable|integer|min:1|max:50',
-                'cuisine_ids' => 'nullable|array',
-                'cuisine_ids.*' => 'integer|exists:chef_cuisines,id',
-                'dietary_preference_id' => 'nullable|integer|exists:dietary_preferences,id',
-                'addon_flag_ids' => 'nullable|array',
-                'addon_flag_ids.*' => 'integer|exists:chef_addon_flags,id',
-                'optional_flag_ids' => 'nullable|array',
-                'optional_flag_ids.*' => 'integer|exists:optional_flags,id',
-                'radius_km' => 'nullable|integer|min:1|max:50',
-                'sort_by' => 'nullable|string|in:distance,rating,quality_score,price',
-                'limit' => 'nullable|integer|min:1|max:100',
-                'include_new_sps' => 'nullable|boolean',
-                'gold_level_only' => 'nullable|boolean',
-                'online_only' => 'nullable|boolean',
-                'night_shift_required' => 'nullable|boolean',
+                'phone'      => 'required|string',
+                'token'      => 'required|string',
+                'sp_user_id' => 'required|integer|exists:s_p_users,id',
+                'is_active'  => 'required|boolean',
+                'latitude'   => 'required|numeric|between:-90,90',
+                'longitude'  => 'required|numeric|between:-180,180',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors'  => $validator->errors(),
                 ], 422);
             }
 
-            $searchParams = $validator->validated();
-            
-            // Apply all 38 capability filters
-            $eligibleSPs = $this->applyAll38Filters($searchParams);
+            $data = $validator->validated();
 
-            if ($eligibleSPs->isEmpty()) {
+        // 3) Load SPUser
+            /** @var \App\Models\SPUser|null $spUser */
+            $spUser = SPUser::where('id', $data['sp_user_id'])
+                ->where('mobile1_number', $data['phone'])
+                ->first();
+
+            if (! $spUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SP user not found for given phone and sp_user_id',
+                    'status_code' => 404,
+                ], 404);
+            }
+
+            // 4) 🔴 UPDATE FIRST: location + status
+            $spUser->latitude     = $data['latitude'];
+            $spUser->longitude    = $data['longitude'];
+            $spUser->is_active    = $data['is_active'];
+            $spUser->is_online    = $data['is_active'];   // treat active as online
+            $spUser->last_seen_at = now();
+            $spUser->save();
+
+            // Ensure we use the latest values from DB (optional but very clear)
+            $spUser->refresh();
+
+            // If SP is inactive after update, stop here
+            if (! $spUser->is_active) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'No service providers found matching the criteria',
+                    'message' => 'SP is inactive. No tasks will be returned.',
                     'data' => [
-                        'sp_ids' => [], // Changed from service_providers to sp_ids
+                        'tasks' => [],
                         'total_count' => 0,
-                        'search_params' => $searchParams,
-                        'filters_applied' => $this->getAppliedFiltersCount($searchParams)
-                    ]
+                        'search_radius_km' => null,
+                        'sp' => [
+                            'sp_user_id' => $spUser->id,
+                            'latitude'   => $spUser->latitude,
+                            'longitude'  => $spUser->longitude,
+                            'is_active'  => $spUser->is_active,
+                        ],
+                    ],
                 ]);
             }
 
-            // Sort service providers using allocation engine logic
-            $sortedSPs = $this->sortServiceProvidersWithAllocationLogic($eligibleSPs, $searchParams);
+        // 5) Load ServiceProvider with capabilities AFTER SPUser is updated
+            /** @var \App\Models\SPUser|null $serviceProvider */
+           // 5) Load SPUser with capabilities AFTER SPUser is updated
+            /** @var \App\Models\SPUser|null $spUserWithCapabilities */
+            $spUserWithCapabilities = SPUser::with('capabilities')
+                ->where('id', $spUser->id)
+                ->where('is_active', true)
+                ->first();
 
-            // Apply limit
-            $limit = $searchParams['limit'] ?? 20;
-            $limitedSPs = $sortedSPs->take($limit);
+            if (! $spUserWithCapabilities) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Service Provider profile not found or inactive for this SP user',
+                    'status_code' => 404,
+                ], 404);
+            }
 
-            // Format response with comprehensive data
-            $formattedSPs = $this->formatServiceProvidersResponse($limitedSPs, $searchParams);
+            // 6) Derive categories / subcategories from capabilities (CSV → array)
+            $activeCapabilities = $spUserWithCapabilities->capabilities->where('is_active', true);
+
+            // sp_capabilities.category_id = "1,2"  →  ["1", "2"]
+            $categoryIds = $activeCapabilities
+                ->flatMap(function ($cap) {
+                    return array_filter(array_map('trim', explode(',', (string) $cap->category_id)));
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            // sp_capabilities.subcategory_id = "1,3"  →  ["1", "3"]
+            $subcategoryIds = $activeCapabilities
+                ->flatMap(function ($cap) {
+                    return array_filter(array_map('trim', explode(',', (string) $cap->subcategory_id)));
+                })
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($categoryIds) || empty($subcategoryIds)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No active category/subcategory capabilities found for this Service Provider',
+                    'data' => [
+                        'tasks' => [],
+                        'total_count' => 0,
+                        'search_radius_km' => null,
+                    ],
+                ]);
+            }
+
+            // 7) Base Task query (before radius)
+            $baseTaskQuery = Task::query()
+                ->whereIn('category_id', $categoryIds)
+                ->whereIn('subcategory_id', $subcategoryIds)
+                ->whereIn('status', ['requested', 'searching'])
+                ->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->with(['category', 'subcategory', 'service', 'customer']);
+
+
+            $spLat = $spUser->latitude;   // ✅ uses UPDATED location
+            $spLng = $spUser->longitude;
+
+            // 8) Try 3 km first
+            $tasks = $this->findTasksWithinRadius($baseTaskQuery, $spLat, $spLng, 3.0);
+            $usedRadius = 3.0;
+
+
+            // If none, try 5 km
+            if ($tasks->isEmpty()) {
+                $tasks = $this->findTasksWithinRadius($baseTaskQuery, $spLat, $spLng, 5.0);
+                $usedRadius = 5.0;
+            }
+
+
+
+
+            if ($tasks->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No matching tasks found within 3–5 km radius',
+                    'data' => [
+                        'tasks' => [],
+                        'total_count' => 0,
+                        'search_radius_km' => $usedRadius,
+                        'sp' => [
+                            'sp_id'      => $spUserWithCapabilities->id,
+                            'sp_user_id' => $spUser->id,
+                            'latitude'   => $spLat,
+                            'longitude'  => $spLng,
+                            'is_active'  => $spUser->is_active,
+                        ],
+                    ],
+                ]);
+            }
+
+            // 9) Format results
+            // 9) Format results: group by SP, multiple tasks
+            $formattedTasks = $tasks->map(function ($task) {
+                return [
+                    'task_id'      => $task->id,
+                    'task_number'  => $task->task_number,
+                    'status'       => $task->status,
+
+                    // Category details
+                    'category' => [
+                        'id'   => $task->category_id,
+                        'name' => $task->category->name ?? null,
+                        'slug' => $task->category->slug ?? null,
+                    ],
+
+                    // Subcategory details
+                    'subcategory' => [
+                        'id'   => $task->subcategory_id,
+                        'name' => $task->subcategory->name ?? null,
+                        'slug' => $task->subcategory->slug ?? null,
+                    ],
+
+                    // Service details
+                    'service' => [
+                        'id'   => $task->service_id,
+                        'name' => $task->service->name ?? null,
+                        'slug' => $task->service->slug ?? null,
+                    ],
+
+                    // Customer details
+                    'customer' => [
+                        'id'         => $task->customer_id,
+                        'full_name'  => trim(($task->customer->name ?? '')),
+                        'phone'      => $task->customer->phone ?? null,
+                        'email'      => $task->customer->email ?? null,
+                    ],
+
+                    // Location / radius
+                    'latitude'     => $task->latitude,
+                    'longitude'    => $task->longitude,
+                    'distance_km'  => round($task->distance_km, 2),
+
+                    // Other task info
+                    'scheduled_at' => $task->scheduled_at,
+                    'pax_count'    => $task->pax_count,
+                    'total_amount' => $task->total_amount,
+                ];
+            })->values();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Service providers found successfully',
+                'message' => 'Matching tasks found successfully',
                 'data' => [
-                    'sp_ids' => $formattedSPs, // Changed from service_providers to sp_ids
-                    'total_count' => $sortedSPs->count(),
-                    'returned_count' => $limitedSPs->count(),
-                    'search_params' => $searchParams,
-                    'filters_applied' => $this->getAppliedFiltersCount($searchParams),
-                    'search_radius_km' => $searchParams['radius_km'] ?? 10,
-                    'search_location' => [
-                        'latitude' => $searchParams['latitude'],
-                        'longitude' => $searchParams['longitude']
-                    ]
-                ]
+                    // 👇 Top-level SP + its tasks
+                    'sp_id'      => $spUserWithCapabilities->id,
+                    'tasks'          => $formattedTasks,
+                    'total_count'    => $formattedTasks->count(),
+                    'search_radius_km' => $usedRadius,
+                ],
             ]);
+
+
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Service provider search failed',
-                'error' => $e->getMessage()
+                'message' => 'Service provider task search failed',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
+
+
+
+    private function findTasksWithinRadius(Builder $baseQuery, float $latitude, float $longitude, float $radiusKm): Collection
+    {
+        $query = clone $baseQuery;
+
+        return $query
+            ->select('tasks.*') // ensure we still get Task models
+            ->selectRaw(
+                "(6371 * acos(
+                cos(radians(?)) * cos(radians(tasks.latitude)) *
+                cos(radians(tasks.longitude) - radians(?)) +
+                sin(radians(?)) * sin(radians(tasks.latitude))
+            )) as distance_km",
+                [$latitude, $longitude, $latitude]
+            )
+            ->having('distance_km', '<=', $radiusKm)
+            ->orderBy('distance_km')
+            ->get();
+    }
+
 
     /**
      * Apply all 38 capability filters as per allocation engine requirements
@@ -146,63 +314,62 @@ class SPSearchController extends Controller
      */
     private function applyAll38Filters(array $params): Collection
     {
-        $scheduledAt = Carbon::parse($params['scheduled_at']);
-        $isNightTime = $scheduledAt->hour >= 22 || $scheduledAt->hour <= 6;
-        $radiusKm = $params['radius_km'] ?? 10;
+        $scheduledAt = isset($params['scheduled_at'])
+            ? Carbon::parse($params['scheduled_at'])
+            : now()->addHours(3);
 
-        // Start with base query applying filters 1-15
-        // FILTER 1: SP User must be active - VERY FIRST CONDITION
+        $isNightTime = $scheduledAt->hour >= 22 || $scheduledAt->hour <= 6;
+        $radiusKm    = $params['radius_km'] ?? 10;
+
         $query = ServiceProvider::query()
-            ->whereHas('spUser', function ($q) {
-                $q->where('is_active', true); // FIRST FILTER: SP User active status
+            // ✅ NEW: only this SP user
+            ->when(!empty($params['sp_user_id']), function ($q) use ($params) {
+                $q->where('sp_user_id', $params['sp_user_id']);
             })
-            
-            // FILTER 2: Service Provider active status
+
+            // FILTER 1: SP User must be active
+            ->whereHas('spUser', function ($q) {
+                $q->where('is_active', true);
+            })
+
+            // FILTER 2+
             ->where('is_active', true)
-            
-            // FILTER 3: Verified status  
             ->where('kyc_verified', true)
-            
-            // FILTER 4: KYC approved
             ->where('kyc_status', 'approved')
-            
-            // FILTER 5: Not blocked
             ->where(function ($q) {
                 $q->where('is_blocked', false)
-                  ->orWhere('blocked_until', '<', now());
+                    ->orWhere('blocked_until', '<', now());
             })
-            
-            // FILTER 5: Not in cooldown
             ->where(function ($q) {
                 $q->whereNull('cooldown_until')
-                  ->orWhere('cooldown_until', '<', now());
+                    ->orWhere('cooldown_until', '<', now());
             })
-            
+
             // FILTER 6: Online status (if required)
             ->when(!empty($params['online_only']), function ($q) {
                 $q->whereHas('spUser', function ($subQ) {
                     $subQ->where('is_online', true);
                 });
             })
-            
+
             // FILTER 7: Last seen recently (active in last 2 hours)
             ->whereHas('spUser', function ($q) {
                 $q->where('last_seen_at', '>=', now()->subHours(2));
             })
-            
+
             // FILTER 8-12: Additional eligibility checks
             ->where('total_ratings', '>=', 0) // Has rating data
-            
+
             // FILTER 13-14: Category/Subcategory capability
             ->whereHas('capabilities', function ($q) use ($params) {
                 $q->where('subcategory_id', $params['subcategory_id'])
                   ->where('is_active', true);
             })
-            
+
             // FILTER 15: Not already on task
             ->whereDoesntHave('tasks', function ($q) {
                 $q->whereIn('status', [
-                    'assigned', 'on_the_way', 'arrived', 
+                    'assigned', 'on_the_way', 'arrived',
                     'otp_start_verified', 'started', 'paused', 'resumed'
                 ]);
             });
@@ -238,7 +405,7 @@ class SPSearchController extends Controller
                 ->where('is_hard_filter', true)
                 ->pluck('id')
                 ->toArray();
-            
+
             // Hard filters are mandatory
             foreach ($hardFilterIds as $flagId) {
                 $query->whereHas('optionalCapabilities', function ($q) use ($flagId) {
@@ -281,7 +448,7 @@ class SPSearchController extends Controller
             'spUser',
             'capabilities',
             'cuisineCapabilities',
-            'dietaryCapabilities', 
+            'dietaryCapabilities',
             'addonCapabilities',
             'optionalCapabilities'
         ])->get();
@@ -301,7 +468,7 @@ class SPSearchController extends Controller
         if ($sp->spUser->hasCoordinates()) {
             $distance = $sp->getDistanceFrom($params['latitude'], $params['longitude']);
             $capability = $sp->capabilities()->where('subcategory_id', $params['subcategory_id'])->first();
-            
+
             if ($capability && $distance > $capability->max_travel_distance_km) {
                 return false;
             }
@@ -364,14 +531,14 @@ class SPSearchController extends Controller
         $activeTasks = $sp->tasks()->whereIn('status', [
             'assigned', 'on_the_way', 'arrived', 'started', 'paused', 'resumed'
         ])->count();
-        
+
         if ($activeTasks >= 3) { // Maximum 3 concurrent tasks
             return false;
         }
 
         // FILTER 37: Service area coverage
         // (This would check if SP serves the specific area - simplified for now)
-        
+
         // FILTER 38: Platform compliance and verification
         // (Additional compliance checks would go here)
 
@@ -572,7 +739,7 @@ class SPSearchController extends Controller
             // Token validation
             $phone = $request->input('phone');
             $token = $request->input('token');
-            
+
             if (!$phone || !$token) {
                 return response()->json([
                     'success' => false,
@@ -592,10 +759,10 @@ class SPSearchController extends Controller
             }
 
             $categoryId = $request->get('category_id');
-            
+
             $data = [
                 'categories' => NewCategory::where('is_active', true)->get(['id', 'name', 'slug']),
-                'subcategories' => $categoryId 
+                'subcategories' => $categoryId
                     ? NewSubcategory::where('category_id', $categoryId)->where('is_active', true)->get(['id', 'name', 'slug', 'pax_required'])
                     : [],
                 'cuisines' => ChefCuisine::where('is_active', true)->get(['id', 'name']),
@@ -765,7 +932,7 @@ class SPSearchController extends Controller
             // Token validation
             $phone = $request->input('phone');
             $token = $request->input('token');
-            
+
             if (!$phone || !$token) {
                 return response()->json([
                     'success' => false,
@@ -774,7 +941,7 @@ class SPSearchController extends Controller
                 ], 400);
             }
 
-            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+            $tokenCheck = AuthHelper::validateToken('s_p_users', $phone, $token, 'mobile1_number');
 
             if (!$tokenCheck['valid']) {
                 return response()->json([
@@ -799,8 +966,11 @@ class SPSearchController extends Controller
                 ], 422);
             }
 
-            $sp = ServiceProvider::with('spUser')->find($spId);
-            
+
+            $sp = ServiceProvider::with('spUser')->where('sp_user_id', $spId)->first();
+
+
+
             if (!$sp) {
                 return response()->json([
                     'success' => false,
@@ -845,7 +1015,7 @@ class SPSearchController extends Controller
             // Token validation
             $phone = $request->input('phone');
             $token = $request->input('token');
-            
+
             if (!$phone || !$token) {
                 return response()->json([
                     'success' => false,
@@ -854,7 +1024,7 @@ class SPSearchController extends Controller
                 ], 400);
             }
 
-            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+            $tokenCheck = AuthHelper::validateToken('s_p_users', $phone, $token, 'mobile1_number');
 
             if (!$tokenCheck['valid']) {
                 return response()->json([
@@ -864,8 +1034,8 @@ class SPSearchController extends Controller
                 ], $tokenCheck['status_code']);
             }
 
-            $sp = ServiceProvider::with('spUser')->find($spId);
-            
+            $sp = ServiceProvider::with('spUser')->where('sp_user_id', $spId)->first();
+
             if (!$sp) {
                 return response()->json([
                     'success' => false,
@@ -952,7 +1122,7 @@ class SPSearchController extends Controller
             // Token validation
             $phone = $request->input('phone');
             $token = $request->input('token');
-            
+
             if (!$phone || !$token) {
                 return response()->json([
                     'success' => false,
@@ -961,7 +1131,7 @@ class SPSearchController extends Controller
                 ], 400);
             }
 
-            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+            $tokenCheck = AuthHelper::validateToken('s_p_users', $phone, $token, 'mobile1_number');
 
             if (!$tokenCheck['valid']) {
                 return response()->json([
@@ -971,8 +1141,8 @@ class SPSearchController extends Controller
                 ], $tokenCheck['status_code']);
             }
 
-            $sp = ServiceProvider::with('spUser')->find($spId);
-            
+            $sp = ServiceProvider::with('spUser')->where('sp_user_id', $spId)->first();
+
             if (!$sp) {
                 return response()->json([
                     'success' => false,
@@ -1016,7 +1186,7 @@ class SPSearchController extends Controller
             // Token validation
             $phone = $request->input('phone');
             $token = $request->input('token');
-            
+
             if (!$phone || !$token) {
                 return response()->json([
                     'success' => false,
@@ -1025,7 +1195,7 @@ class SPSearchController extends Controller
                 ], 400);
             }
 
-            $tokenCheck = AuthHelper::validateToken('customers', $phone, $token, 'phone');
+            $tokenCheck = AuthHelper::validateToken('s_p_users', $phone, $token, 'mobile1_number');
 
             if (!$tokenCheck['valid']) {
                 return response()->json([
@@ -1056,8 +1226,8 @@ class SPSearchController extends Controller
                 ], 422);
             }
 
-            $sp = ServiceProvider::with('spUser')->find($spId);
-            
+            $sp = ServiceProvider::with('spUser')->where('sp_user_id', $spId)->first();
+
             if (!$sp) {
                 return response()->json([
                     'success' => false,

@@ -121,6 +121,12 @@ class SPUser extends Authenticatable implements HasAvatar, HasName
         return $this->hasOne(SPChefDetail::class, 'sp_user_id');
     }
 
+    // App\Models\ServiceProvider
+    public function capabilities()
+    {
+        return $this->hasMany(SpCapability::class, 'service_provider_id');
+    }
+
     public function houseHelpDetail(): HasOne
     {
         return $this->hasOne(SPHouseHelpDetail::class, 'sp_user_id');

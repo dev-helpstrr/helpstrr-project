@@ -28,22 +28,28 @@ class ListProviderOptions extends ListRecords
     {
         return [
             'categories' => Tab::make('Categories')
-                ->modifyQueryUsing(fn ($query) => $query->where('1', '0')) // This will be handled by separate resources
+               ->modifyQueryUsing(fn ($query) => $query->whereRaw('1 = 0'))
+ // This will be handled by separate resources
                 ->badge(NewCategory::count()),
             'subcategories' => Tab::make('Subcategories')
-                ->modifyQueryUsing(fn ($query) => $query->where('1', '0'))
+               ->modifyQueryUsing(fn ($query) => $query->whereRaw('1 = 0'))
+
                 ->badge(NewSubcategory::count()),
             'cuisines' => Tab::make('Cuisines')
-                ->modifyQueryUsing(fn ($query) => $query->where('1', '0'))
+               ->modifyQueryUsing(fn ($query) => $query->whereRaw('1 = 0'))
+
                 ->badge(ChefCuisine::count()),
             'dietary_preferences' => Tab::make('Dietary Preferences')
-                ->modifyQueryUsing(fn ($query) => $query->where('1', '0'))
+               ->modifyQueryUsing(fn ($query) => $query->whereRaw('1 = 0'))
+
                 ->badge(DietaryPreference::count()),
             'addon_flags' => Tab::make('Addon Flags')
-                ->modifyQueryUsing(fn ($query) => $query->where('1', '0'))
+               ->modifyQueryUsing(fn ($query) => $query->whereRaw('1 = 0'))
+
                 ->badge(ChefAddonFlag::count()),
             'optional_flags' => Tab::make('Optional Flags')
-                ->modifyQueryUsing(fn ($query) => $query->where('1', '0'))
+               ->modifyQueryUsing(fn ($query) => $query->whereRaw('1 = 0'))
+
                 ->badge(OptionalFlag::count()),
         ];
     }

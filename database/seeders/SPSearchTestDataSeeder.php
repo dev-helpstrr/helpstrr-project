@@ -2,32 +2,35 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\Customer;
-use App\Models\CustomerAddress;
+use Carbon\Carbon;
 use App\Models\Task;
 use App\Models\SPUser;
-use App\Models\ServiceProvider;
-use App\Models\NewCategory;
-use App\Models\NewSubcategory;
 use App\Models\Service;
+use App\Models\Customer;
 use App\Models\ChefCuisine;
-use App\Models\DietaryPreference;
+use App\Models\NewCategory;
+use Illuminate\Support\Str;
 use App\Models\OptionalFlag;
-use App\Models\ChefAddonFlag;
 use App\Models\SpCapability;
+use App\Models\ChefAddonFlag;
+use App\Models\NewSubcategory;
+use App\Models\CustomerAddress;
+use App\Models\ServiceProvider;
+use Illuminate\Database\Seeder;
+use App\Models\DietaryPreference;
+use App\Models\SpAddonCapability;
+use App\Models\TaskPriceComponent;
 use App\Models\SpCuisineCapability;
 use App\Models\SpDietaryCapability;
-use App\Models\SpAddonCapability;
 use App\Models\SpOptionalCapability;
-use App\Models\TaskPriceComponent;
 use Illuminate\Support\Facades\Hash;
-use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
 
 class SPSearchTestDataSeeder extends Seeder
 {
     public function run(): void
     {
+        Model::unguard();
         $this->command->info('Creating comprehensive SP Search test data...');
 
         // Create base data first
@@ -38,13 +41,13 @@ class SPSearchTestDataSeeder extends Seeder
         $this->createDietaryPreferences();
         $this->createAddonFlags();
         $this->createOptionalFlags();
-        
+
         // Create customers with addresses
         $this->createCustomers();
-        
+
         // Create service providers with all capabilities
         $this->createServiceProviders();
-        
+
         // Create sample tasks for testing
         $this->createSampleTasks();
 
@@ -201,10 +204,29 @@ class SPSearchTestDataSeeder extends Seeder
         ];
 
         foreach ($subcategories as $subcategoryData) {
-            NewSubcategory::updateOrCreate(
+            // 1. pull out category_id before saving the subcategory
+            $categoryId = $subcategoryData['category_id'] ?? null;
+            unset($subcategoryData['category_id']);
+
+            // 2. create/update the subcategory itself
+            $subcategory = NewSubcategory::updateOrCreate(
                 ['slug' => $subcategoryData['slug']],
                 $subcategoryData
             );
+
+            // 3. attach it to the category via the pivot table
+            if ($categoryId && $subcategory) {
+                $category = NewCategory::find($categoryId);
+
+                if ($category) {
+                    $category->subcategories()->syncWithoutDetaching([
+                        $subcategory->id => [
+                            'is_primary' => true,
+                            'sort_order' => $subcategoryData['sort_order'] ?? 0,
+                        ],
+                    ]);
+                }
+            }
         }
     }
 
@@ -288,12 +310,16 @@ class SPSearchTestDataSeeder extends Seeder
         ];
 
         foreach ($preferences as $preferenceData) {
+            // ensure slug is always set
+            $preferenceData['slug'] = Str::slug($preferenceData['name']);
+
             DietaryPreference::updateOrCreate(
-                ['name' => $preferenceData['name']],
+                ['slug' => $preferenceData['slug']], // use slug as the unique key
                 $preferenceData
             );
         }
     }
+
 
     private function createAddonFlags(): void
     {
@@ -309,8 +335,9 @@ class SPSearchTestDataSeeder extends Seeder
         ];
 
         foreach ($flags as $flagData) {
+            $flagData['slug'] = Str::slug($flagData['name']);
             ChefAddonFlag::updateOrCreate(
-                ['name' => $flagData['name']],
+                ['slug' => $flagData['slug']], // use slug as the unique key
                 $flagData
             );
         }
@@ -329,8 +356,9 @@ class SPSearchTestDataSeeder extends Seeder
         ];
 
         foreach ($flags as $flagData) {
+            $flagData['slug'] = Str::slug($flagData['name']);
             OptionalFlag::updateOrCreate(
-                ['name' => $flagData['name']],
+                ['slug' => $flagData['slug']], // use slug as the unique key
                 $flagData
             );
         }
@@ -350,7 +378,7 @@ class SPSearchTestDataSeeder extends Seeder
                 'is_active' => true,
                 'addresses' => [
                     [
-                        'label' => 'home',
+                        'type' => 'home',
                         'address_line_1' => '123 Test Street',
                         'city' => 'Kolkata',
                         'state' => 'West Bengal',
@@ -370,7 +398,7 @@ class SPSearchTestDataSeeder extends Seeder
                 'is_active' => true,
                 'addresses' => [
                     [
-                        'label' => 'home',
+                        'type' => 'home',
                         'address_line_1' => '456 Test Avenue',
                         'city' => 'Kolkata',
                         'state' => 'West Bengal',
@@ -386,17 +414,17 @@ class SPSearchTestDataSeeder extends Seeder
         foreach ($customers as $customerData) {
             $addresses = $customerData['addresses'];
             unset($customerData['addresses']);
-            
+
             $customer = Customer::updateOrCreate(
                 ['email' => $customerData['email']],
                 $customerData
             );
-            
+
             foreach ($addresses as $addressData) {
                 CustomerAddress::updateOrCreate(
                     [
                         'customer_id' => $customer->id,
-                        'label' => $addressData['label']
+                        'type' => $addressData['type']
                     ],
                     array_merge($addressData, [
                         'customer_id' => $customer->id,
@@ -416,9 +444,7 @@ class SPSearchTestDataSeeder extends Seeder
         $houseHelpCategory = NewCategory::where('slug', 'house-help')->first();
         $driverCategory = NewCategory::where('slug', 'driver')->first();
 
-        $chefSubcategories = NewSubcategory::where('category_id', $chefCategory->id)->get();
-        $houseHelpSubcategories = NewSubcategory::where('category_id', $houseHelpCategory->id)->get();
-        $driverSubcategories = NewSubcategory::where('category_id', $driverCategory->id)->get();
+
 
         $cuisines = ChefCuisine::all();
         $dietaryPreferences = DietaryPreference::all();
@@ -774,7 +800,11 @@ class SPSearchTestDataSeeder extends Seeder
             // Create capabilities for each subcategory
             foreach ($data['subcategories'] as $subcategorySlug) {
                 $subcategory = NewSubcategory::where('slug', $subcategorySlug)->first();
+
                 if ($subcategory) {
+                    // find the primary category via the pivot relationship
+                    $primaryCategory = $subcategory->getPrimaryCategory();
+
                     SpCapability::updateOrCreate(
                         [
                             'service_provider_id' => $sp->id,
@@ -782,7 +812,7 @@ class SPSearchTestDataSeeder extends Seeder
                         ],
                         [
                             'service_provider_id' => $sp->id,
-                            'category_id' => $subcategory->category_id,
+                            'category_id' => $primaryCategory?->id,  // ✅ new_categories.id
                             'subcategory_id' => $subcategory->id,
                             'max_pax_capacity' => rand(5, 20),
                             'max_travel_distance_km' => rand(10, 30),
@@ -792,6 +822,8 @@ class SPSearchTestDataSeeder extends Seeder
                     );
                 }
             }
+
+
 
             // Create cuisine capabilities (for chef SPs)
             foreach ($data['cuisines'] as $cuisineName) {
@@ -878,25 +910,25 @@ class SPSearchTestDataSeeder extends Seeder
         // Get categories and subcategories for this SP
         $categories = NewCategory::whereIn('slug', ['chef', 'house-help', 'driver'])->get();
         $subcategories = NewSubcategory::whereIn('slug', $spData['subcategories'])->get();
-        
+
         // Create 3-5 tasks per SP with different statuses
         $taskStatuses = ['completed', 'assigned', 'started', 'rated', 'cancelled'];
         $taskCount = rand(3, 5);
-        
+
         for ($i = 0; $i < $taskCount; $i++) {
             $customer = $customers[array_rand($customers)];
             $category = $categories->random();
             $subcategory = $subcategories->random();
             $status = $taskStatuses[array_rand($taskStatuses)];
-            
+
             // Generate task number
             $taskNumber = 'TSK' . date('Ymd') . str_pad($sp->id * 10 + $i, 3, '0', STR_PAD_LEFT);
-            
+
             // Set dates based on status
             $scheduledAt = now()->subDays(rand(1, 30))->addHours(rand(8, 20));
             $startedAt = $status !== 'assigned' ? $scheduledAt->copy()->addMinutes(rand(5, 30)) : null;
             $completedAt = in_array($status, ['completed', 'rated']) ? $startedAt?->copy()->addHours(rand(1, 4)) : null;
-            
+
             Task::updateOrCreate(
                 ['task_number' => $taskNumber],
                 [
@@ -993,9 +1025,30 @@ class SPSearchTestDataSeeder extends Seeder
         $this->command->info('Creating sample tasks...');
 
         $customer = Customer::first();
-        $customerAddress = CustomerAddress::first();
+
+
+
         $chefCategory = NewCategory::where('slug', 'chef')->first();
         $lunchSubcategory = NewSubcategory::where('slug', 'lunch')->first();
+
+        $customerAddress = $customer->addresses()->where('is_default', true)->first()
+            ?? $customer->addresses()->first();
+
+        // if still nothing (just in case), create a fallback:
+        if (! $customerAddress) {
+            $customerAddress = CustomerAddress::create([
+                'customer_id'     => $customer->id,
+                'label'           => 'Home',
+                'address_line_1'  => '123 Test Street',
+                'city'            => 'Bengaluru',
+                'state'           => 'Karnataka',
+                'postal_code'     => '560001',
+                'latitude'        => 12.9716,
+                'longitude'       => 77.5946,
+                'is_default'      => true,
+                'is_active'       => true,
+            ]);
+        }
 
         if ($customer && $customerAddress && $chefCategory && $lunchSubcategory) {
             $task = Task::updateOrCreate(
@@ -1003,7 +1056,7 @@ class SPSearchTestDataSeeder extends Seeder
                 [
                     'task_number' => 'TSK20241205001',
                     'customer_id' => $customer->id,
-                    'customer_address_id' => $customerAddress->id,
+                    'customer_address_id' =>12,
                     'category_id' => $chefCategory->id,
                     'subcategory_id' => $lunchSubcategory->id,
                     'pax_count' => 4,

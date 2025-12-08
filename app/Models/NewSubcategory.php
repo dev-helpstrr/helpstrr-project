@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 class NewSubcategory extends Model
 {
     protected $table = 'new_subcategories';
-    
+
     protected $fillable = [
         'name',
         'slug',
@@ -44,13 +44,13 @@ class NewSubcategory extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($subcategory) {
             if (empty($subcategory->slug)) {
                 $subcategory->slug = Str::slug($subcategory->name);
             }
         });
-        
+
         static::updating(function ($subcategory) {
             if ($subcategory->isDirty('name') && empty($subcategory->slug)) {
                 $subcategory->slug = Str::slug($subcategory->name);
@@ -179,6 +179,7 @@ class NewSubcategory extends Model
         return $this->primaryCategories()->first();
     }
 
+
     public function attachCategory(NewCategory $category, bool $isPrimary = false, int $sortOrder = 0): void
     {
         $this->categories()->attach($category->id, [
@@ -241,4 +242,6 @@ class NewSubcategory extends Model
     {
         return $this->name;
     }
+
+
 }

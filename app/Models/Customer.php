@@ -213,6 +213,7 @@ class Customer extends Authenticatable implements HasAvatar, HasName
         return $this->hasMany(CustomerAddress::class);
     }
 
+
     /**
      * Get customer tasks/bookings
      */
